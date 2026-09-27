@@ -1,6 +1,5 @@
+use crate::udp::UdpTransport;
 use std::fmt::Display;
-
-const COMMAND_SIZE: usize = 14;
 
 pub mod channels {
     use crate::Port;
@@ -155,34 +154,6 @@ impl Display for Crtp {
     }
 }
 
-#[derive(Debug, Default)]
-pub struct Command {
-    roll: f32,
-    pitch: f32,
-    yaw: f32,
-    thrust: u16,
-}
-
-impl Command {
-    pub fn new(roll: f32, pitch: f32, yaw: f32, thrust: u16) -> Self {
-        Self {
-            roll,
-            pitch,
-            yaw,
-            thrust,
-        }
-    }
-
-    pub fn to_bytes(&self) -> [u8; COMMAND_SIZE] {
-        let mut buf = [0u8; COMMAND_SIZE];
-        buf[0..4].copy_from_slice(&self.roll.to_le_bytes());
-        buf[4..8].copy_from_slice(&self.pitch.to_le_bytes());
-        buf[8..12].copy_from_slice(&self.yaw.to_le_bytes());
-        buf[12..COMMAND_SIZE].copy_from_slice(&self.thrust.to_le_bytes());
-        buf
-    }
-}
-
 pub struct Packet {
     crtp: Crtp,
     cksum: u8,
@@ -206,4 +177,15 @@ impl Packet {
         buf.extend_from_slice(&self.cksum.to_le_bytes());
         buf
     }
+}
+
+pub fn build_packet(channel: &channels::Channel, data: &[u8]) -> Vec<u8> {
+    let info_crtp = Crtp::new(channel, data);
+    let packet_info = Packet::new(info_crtp);
+    packet_info.to_bytes()
+}
+
+pub fn null_packet() -> Vec<u8> {
+    let crtp = Crtp::new(&channels::Channel::Link(channels::LinkChannel::Source), &[]);
+    Packet::new(crtp).to_bytes()
 }
