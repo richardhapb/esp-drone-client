@@ -12,7 +12,7 @@ impl Toc {
     pub fn get_info_v2(transport: &UdpTransport) -> Result<TocInfoV2, String> {
         let packet = build_packet(
             &channels::Channel::Log(channels::LogChannel::Toc),
-            &[GET_ITEM_V2],
+            &[GET_INFO_V2],
         );
 
         transport.write_with_retries(&packet)?;
@@ -54,7 +54,7 @@ impl Display for TocInfoV2 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "TOC:\n Len: {}\nCRC: {:?}\nMax blocks:{}\nMax ops:{}\n",
+            "TOC:\nLen: {}\nCRC: {:?}\nMax blocks:{}\nMax ops:{}\n",
             self.log_len(),
             self.crc(),
             self.max_blocks(),

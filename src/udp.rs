@@ -1,8 +1,5 @@
 use crate::packet::{Crtp, Port, null_packet};
-use std::{
-    net::UdpSocket,
-    time::{Duration, Instant},
-};
+use std::net::UdpSocket;
 
 const RETRIES: usize = 12;
 const BUF_SIZE: usize = 128;
@@ -68,63 +65,13 @@ impl UdpTransport {
 
         Ok(())
     }
-
-    pub fn write_until_get_response(
-        &self,
-        data: &[u8],
-        duration: Duration,
-    ) -> Result<Vec<u8>, String> {
-        let prev_timeout = self
-            .socket
-            .read_timeout()
-            .map_err(|e| format!("error retrieving timeout: {e}"))?;
-
-        self.socket
-            .set_read_timeout(Some(Duration::from_millis(1000)))
-            .map_err(|e| format!("error setting timeout: {e}"))?;
-
-        println!("timeout: {:?}", self.socket.read_timeout());
-
-        let result = (|| {
-            let start = Instant::now();
-            let mut buf = [0; BUF_SIZE];
-
-            self.write_with_retries(data)?;
-
-            loop {
-                match self.socket.recv(&mut buf) {
-                    Ok(n) if n > 0 => return Ok(buf[..n].to_vec()),
-                    Ok(_) => {
-                        self.write_with_retries(data)?;
-                    }
-                    Err(e)
-                        if e.kind() == std::io::ErrorKind::WouldBlock
-                            || e.kind() == std::io::ErrorKind::TimedOut =>
-                    {
-                        self.write_with_retries(data)?;
-                    }
-                    Err(e) => return Err(format!("error receiving: {e}")),
-                }
-
-                if start.elapsed() >= duration {
-                    return Err("no data received until retry timeout".to_string());
-                }
-            }
-        })();
-
-        self.socket
-            .set_read_timeout(prev_timeout)
-            .map_err(|e| format!("error restoring timeout: {e}"))?;
-
-        result
-    }
 }
 
 fn sleep(millis: u64) {
     std::thread::sleep(std::time::Duration::from_millis(millis));
 }
 
-pub fn send_null_packet(transport: &UdpTransport) -> Result<Vec<u8>, String> {
+pub fn send_null_packet(transport: &UdpTransport) -> Result<(), String> {
     let npck = null_packet();
-    transport.write_until_get_response(&npck, Duration::from_secs(10))
+    transport.write_with_retries(&npck)
 }

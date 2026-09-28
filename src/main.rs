@@ -1,7 +1,7 @@
 use crate::{
     commander::Commander,
     logging::Toc,
-    packet::{Crtp, Port, channels},
+    packet::{Port, channels},
     udp::{UdpTransport, send_null_packet},
 };
 
