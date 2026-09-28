@@ -18,7 +18,7 @@ impl Toc {
         transport.write_with_retries(&packet)?;
         let res = transport.recv_with_retries()?;
 
-        Ok(TocInfoV2::new(res[..9].try_into().unwrap()))
+        Ok(TocInfoV2::new(res[1..10].try_into().unwrap()))
     }
 }
 
@@ -32,7 +32,7 @@ impl TocInfoV2 {
         Self { data }
     }
 
-    pub fn log_len(&self) -> u16 {
+    pub fn count(&self) -> u16 {
         let raw: [u8; 2] = self.data[1..3].try_into().unwrap();
         u16::from_le_bytes(raw)
     }
@@ -54,8 +54,8 @@ impl Display for TocInfoV2 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "TOC:\nLen: {}\nCRC: {:?}\nMax blocks:{}\nMax ops:{}\n",
-            self.log_len(),
+            "TOC:\nCount: {}\nCRC: {:?}\nMax blocks: {}\nMax ops: {}\n",
+            self.count(),
             self.crc(),
             self.max_blocks(),
             self.max_ops()

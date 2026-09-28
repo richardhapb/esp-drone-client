@@ -124,18 +124,18 @@ impl Crtp {
         }
     }
 
-    fn header(&self) -> u8 {
+    pub fn header(&self) -> u8 {
         (u8::from(&self.port) << 4) | (self.channel & 0b11)
     }
 
-    fn to_bytes(&self) -> Vec<u8> {
+    pub fn to_bytes(&self) -> Vec<u8> {
         let mut buf = Vec::with_capacity(self.len());
         buf.extend_from_slice(&self.header().to_le_bytes());
         buf.extend_from_slice(&self.payload);
         buf
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.payload.len() + 1
     }
 }

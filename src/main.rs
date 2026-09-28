@@ -2,7 +2,7 @@ use crate::{
     commander::Commander,
     logging::Toc,
     packet::{Port, channels},
-    udp::{UdpTransport, send_null_packet},
+    udp::UdpTransport,
 };
 
 mod commander;
@@ -13,10 +13,6 @@ mod udp;
 fn main() {
     let thrust = 10000;
     let transport = UdpTransport::connect().unwrap();
-
-    send_null_packet(&transport).unwrap();
-    let res = transport.recv_crtp().unwrap();
-    println!("{res}");
 
     let toc = Toc::get_info_v2(&transport).unwrap();
     println!("{}", toc);

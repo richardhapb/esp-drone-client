@@ -1,5 +1,5 @@
 use crate::packet::{Crtp, Port, null_packet};
-use std::net::UdpSocket;
+use std::{net::UdpSocket, time::Duration};
 
 const RETRIES: usize = 12;
 const BUF_SIZE: usize = 128;
@@ -14,6 +14,9 @@ impl UdpTransport {
         socket
             .connect("192.168.1.99:2390")
             .map_err(|e| format!("error connecting: {e}"))?;
+        socket
+            .set_read_timeout(Some(Duration::from_millis(350)))
+            .map_err(|e| format!("error setting read timeout: {e}"))?;
         Ok(Self { socket })
     }
 
