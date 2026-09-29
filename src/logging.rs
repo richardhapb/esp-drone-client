@@ -62,3 +62,19 @@ impl Display for TocInfoV2 {
         )
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_toc() {
+        let response = [GET_INFO_V2, 0xA, 0, 0x10, 0x15, 0x1F, 0xF2, 5, 4];
+
+        let toc = TocInfoV2::new(response);
+        assert_eq!(toc.count(), 10);
+        assert_eq!(toc.crc(), [0x10, 0x15, 0x1F, 0xF2]);
+        assert_eq!(toc.max_blocks(), 5);
+        assert_eq!(toc.max_ops(), 4);
+    }
+}
