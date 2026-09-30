@@ -12,7 +12,7 @@ impl UdpTransport {
     pub fn connect() -> Result<Self, String> {
         let socket = UdpSocket::bind("0.0.0.0:3400").map_err(|e| format!("error binding: {e}"))?;
         socket
-            .connect("192.168.1.99:2390")
+            .connect("192.168.1.101:2390")
             .map_err(|e| format!("error connecting: {e}"))?;
         socket
             .set_read_timeout(Some(Duration::from_millis(350)))
@@ -55,7 +55,6 @@ impl UdpTransport {
     }
 
     pub fn write_with_retries(&self, msg: &[u8]) -> Result<(), String> {
-        println!("sending : {:?}", msg);
         let mut i = 1;
         while let Err(e) = self.socket.send(msg) {
             eprintln!("error sending package: {}", e);

@@ -22,10 +22,14 @@ impl Toc {
     }
 
     pub fn get_item_v2(transport: &UdpTransport, item_id: u16) -> Result<TocItemV2, String> {
-        let mut payload = [GET_ITEM_V2];
-        payload[1..].copy_from_slice(&item_id.to_le_bytes());
+        let mut payload = Vec::with_capacity(3);
+        payload.push(GET_ITEM_V2);
+        payload.extend_from_slice(&item_id.to_le_bytes());
 
-        let packet = build_packet(&channels::Channel::Log(channels::LogChannel::Toc), &payload);
+        let packet = build_packet(
+            &channels::Channel::Log(channels::LogChannel::Toc),
+            payload.as_slice(),
+        );
 
         transport.write_with_retries(&packet)?;
         let res = transport.recv_with_retries()?;
@@ -66,7 +70,7 @@ impl Display for TocInfoV2 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "TOC:\nCount: {}\nCRC: {:?}\nMax blocks: {}\nMax ops: {}\n",
+            "TOC Info\n--------\nCount: {}\nCRC: {:?}\nMax blocks: {}\nMax ops: {}\n",
             self.count(),
             self.crc(),
             self.max_blocks(),
@@ -96,23 +100,34 @@ impl TocItemV2 {
     }
 
     pub fn group(&self) -> String {
-        // Ignore last byte (0x0)
-        let group_raw = self.data[4..self.data.len() - 1]
-            .split(|b| *b == 0x0)
-            .next()
-            .unwrap_or_default();
-
-        String::from_utf8_lossy(group_raw).to_string()
+        Self::capture_string_until_terminator(&self.data[4..])
     }
 
     pub fn name(&self) -> String {
-        // Ignore last byte (0x0)
-        let name_raw = self.data[4..self.data.len() - 1]
-            .split(|b| *b == 0x0)
-            .next_back()
-            .unwrap_or_default();
+        let mut i = 4;
 
-        String::from_utf8_lossy(name_raw).to_string()
+        for j in 4..self.data.len() {
+            if self.data[j] == 0x0 {
+                i = (j + 1).min(self.data.len() - 1);
+                break;
+            }
+        }
+
+        Self::capture_string_until_terminator(&self.data[i..])
+    }
+
+    fn capture_string_until_terminator(raw_bytes: &[u8]) -> String {
+        let mut g = String::new();
+
+        for b in raw_bytes.iter() {
+            if *b == 0x0 {
+                break;
+            }
+
+            g.push(*b as char);
+        }
+
+        g
     }
 }
 
@@ -120,7 +135,7 @@ impl Display for TocItemV2 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "TOC:\nID: {}\nType: {:?}\nGroup: {}\nName: {}\n",
+            "TOC Item\n--------\nID: {}\nType: {:?}\nGroup: {}\nName: {}\n",
             self.id(),
             self.r#type(),
             self.group(),
@@ -146,30 +161,26 @@ mod tests {
 
     #[test]
     fn parse_toc_item() {
-        // item 10, type 5, group "hello" and name "world"
+        // item 10, type 5, group "pm" and name "vbat"
         let response = [
             GET_ITEM_V2,
             0xA,
             0,
             0x5,
-            0x68,
-            0x65,
-            0x6C,
-            0x6C,
-            0x6F,
+            0x70,
+            0x6D,
             0x0,
-            0x77,
-            0x6F,
-            0x72,
-            0x6C,
-            0x64,
+            0x76,
+            0x62,
+            0x61,
+            0x74,
             0x0,
         ];
 
         let toc = TocItemV2::new(&response);
         assert_eq!(toc.id(), 10);
         assert_eq!(toc.r#type(), 5);
-        assert_eq!(toc.group(), "hello");
-        assert_eq!(toc.name(), "world");
+        assert_eq!(toc.group(), "pm");
+        assert_eq!(toc.name(), "vbat");
     }
 }

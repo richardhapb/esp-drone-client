@@ -23,6 +23,7 @@ fn main() {
         println!("{}", item);
     }
 
+    println!("Ramping...");
     for _ in 1..30 {
         let cmd = Commander::new(0f32, 0f32, 0f32, thrust);
         cmd.send(&transport).unwrap();
@@ -32,6 +33,7 @@ fn main() {
     let zero_cmd = Commander::default();
 
     // Cool down
+    println!("Cooling down...");
     for _ in 1..30 {
         zero_cmd.send(&transport).unwrap();
         sleep(10);
