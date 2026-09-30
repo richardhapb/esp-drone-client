@@ -16,6 +16,12 @@ fn main() {
 
     let toc = Toc::get_info_v2(&transport).unwrap();
     println!("{}", toc);
+    println!();
+
+    for i in 0..toc.count() {
+        let item = Toc::get_item_v2(&transport, i).unwrap();
+        println!("{}", item);
+    }
 
     for _ in 1..30 {
         let cmd = Commander::new(0f32, 0f32, 0f32, thrust);
