@@ -18,9 +18,9 @@ fn main() {
     println!("{}", toc);
     println!();
 
-    for i in 0..toc.count() {
-        let item = Toc::get_item_v2(&transport, i).unwrap();
-        println!("{}", item);
+    let bat = toc.get_item(&transport, "pm.vbat");
+    if let Some(bat) = bat {
+        println!("{}", bat);
     }
 
     println!("Ramping...");

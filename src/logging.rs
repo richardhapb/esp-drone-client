@@ -64,6 +64,17 @@ impl TocInfoV2 {
     pub fn max_ops(&self) -> u8 {
         self.data[8]
     }
+
+    pub fn get_item(&self, transport: &UdpTransport, name: &str) -> Option<TocItemV2> {
+        for i in 0..self.count() {
+            let item = Toc::get_item_v2(transport, i).unwrap();
+            if name == item.name() {
+                return Some(item);
+            }
+        }
+
+        None
+    }
 }
 
 impl Display for TocInfoV2 {
@@ -148,6 +159,23 @@ impl Display for TocItemV2 {
 mod tests {
     use super::*;
 
+    fn get_pm_vbat() -> [u8; 12] {
+        [
+            GET_ITEM_V2,
+            0xA,
+            0,
+            0x5,
+            0x70,
+            0x6D,
+            0x0,
+            0x76,
+            0x62,
+            0x61,
+            0x74,
+            0x0,
+        ]
+    }
+
     #[test]
     fn parse_toc_info() {
         let response = [GET_INFO_V2, 0xA, 0, 0x10, 0x15, 0x1F, 0xF2, 5, 4];
@@ -162,22 +190,9 @@ mod tests {
     #[test]
     fn parse_toc_item() {
         // item 10, type 5, group "pm" and name "vbat"
-        let response = [
-            GET_ITEM_V2,
-            0xA,
-            0,
-            0x5,
-            0x70,
-            0x6D,
-            0x0,
-            0x76,
-            0x62,
-            0x61,
-            0x74,
-            0x0,
-        ];
+        let pm_vbat = get_pm_vbat();
 
-        let toc = TocItemV2::new(&response);
+        let toc = TocItemV2::new(&pm_vbat);
         assert_eq!(toc.id(), 10);
         assert_eq!(toc.r#type(), 5);
         assert_eq!(toc.group(), "pm");
