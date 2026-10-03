@@ -1,10 +1,7 @@
 use std::fmt::Display;
 
 use crate::packet::channels;
-use crate::{
-    packet::build_packet,
-    transport::{Transport, UdpTransport},
-};
+use crate::{packet::build_packet, transport::Transport};
 pub const GET_ITEM_V2: u8 = 0x02;
 pub const GET_INFO_V2: u8 = 0x03;
 
@@ -68,10 +65,14 @@ impl TocInfoV2 {
         self.data[8]
     }
 
-    pub fn get_item(&self, transport: &UdpTransport, name: &str) -> Option<TocItemV2> {
+    pub fn get_item<T: Transport>(&self, transport: &T, name: &str) -> Option<TocItemV2> {
+        let parts = name.split_once(".").unwrap_or_default();
+        let group = parts.0;
+        let name = parts.1;
+
         for i in 0..self.count() {
             let item = Toc::get_item_v2(transport, i).unwrap();
-            if name == item.name() {
+            if group == item.group() && name == item.name() {
                 return Some(item);
             }
         }
@@ -161,6 +162,47 @@ impl Display for TocItemV2 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::Cell;
+
+    #[derive(Debug, Default)]
+    struct DumpTransport {
+        in_item: Cell<bool>,
+    }
+
+    impl Transport for DumpTransport {
+        fn connect() -> Result<Self, String> {
+            todo!()
+        }
+
+        fn recv(&self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let mut data = vec![0];
+            if self.in_item.get() {
+                data.extend_from_slice(&get_pm_vbat())
+            } else {
+                data.extend_from_slice(&get_basic_toc_info());
+            }
+
+            buf[..data.len()].copy_from_slice(&data);
+
+            Ok(data.len())
+        }
+
+        fn send(&self, buf: &[u8]) -> std::io::Result<usize> {
+            // skip (0) <- header
+            let kind = buf[1];
+            match kind {
+                GET_INFO_V2 => self.in_item.set(false),
+                GET_ITEM_V2 => self.in_item.set(true),
+                _ => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Unsupported,
+                        "are you serious?",
+                    ));
+                }
+            }
+            Ok(buf.len())
+        }
+    }
 
     fn get_pm_vbat() -> [u8; 12] {
         [
@@ -179,11 +221,15 @@ mod tests {
         ]
     }
 
+    fn get_basic_toc_info() -> [u8; 9] {
+        // item 10, type 5, group "pm" and name "vbat"
+        [GET_INFO_V2, 0xA, 0, 0x10, 0x15, 0x1F, 0xF2, 5, 4]
+    }
+
     #[test]
     fn parse_toc_info() {
-        let response = [GET_INFO_V2, 0xA, 0, 0x10, 0x15, 0x1F, 0xF2, 5, 4];
-
-        let toc = TocInfoV2::new(response);
+        let toc_info = get_basic_toc_info();
+        let toc = TocInfoV2::new(toc_info);
         assert_eq!(toc.count(), 10);
         assert_eq!(toc.crc(), [0x10, 0x15, 0x1F, 0xF2]);
         assert_eq!(toc.max_blocks(), 5);
@@ -192,7 +238,6 @@ mod tests {
 
     #[test]
     fn parse_toc_item() {
-        // item 10, type 5, group "pm" and name "vbat"
         let pm_vbat = get_pm_vbat();
 
         let toc = TocItemV2::new(&pm_vbat);
@@ -200,5 +245,26 @@ mod tests {
         assert_eq!(toc.r#type(), 5);
         assert_eq!(toc.group(), "pm");
         assert_eq!(toc.name(), "vbat");
+    }
+
+    #[test]
+    fn parse_get_item_some() {
+        let t = DumpTransport::default();
+        let toc = Toc::get_info_v2(&t).unwrap();
+
+        let item = toc.get_item(&t, "pm.vbat");
+        assert!(item.is_some());
+        let item = item.unwrap();
+        assert_eq!(item.group(), "pm");
+        assert_eq!(item.name(), "vbat");
+    }
+
+    #[test]
+    fn parse_get_item_none() {
+        let t = DumpTransport::default();
+        let toc = Toc::get_info_v2(&t).unwrap();
+
+        let item = toc.get_item(&t, "nothing");
+        assert!(item.is_none());
     }
 }
