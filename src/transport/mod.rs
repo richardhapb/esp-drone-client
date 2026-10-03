@@ -11,7 +11,6 @@ const BUF_SIZE: usize = 128;
 
 #[allow(dead_code)]
 pub trait Transport: Sized {
-    fn connect() -> Result<Self, String>;
     fn recv(&self, buf: &mut [u8]) -> std::io::Result<usize>;
     fn send(&self, buf: &[u8]) -> std::io::Result<usize>;
 

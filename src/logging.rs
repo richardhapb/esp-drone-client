@@ -170,10 +170,6 @@ mod tests {
     }
 
     impl Transport for DumpTransport {
-        fn connect() -> Result<Self, String> {
-            todo!()
-        }
-
         fn recv(&self, buf: &mut [u8]) -> std::io::Result<usize> {
             let mut data = vec![0];
             if self.in_item.get() {
