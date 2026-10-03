@@ -1,7 +1,10 @@
 use std::fmt::Display;
 
 use crate::packet::channels;
-use crate::{packet::build_packet, udp::UdpTransport};
+use crate::{
+    packet::build_packet,
+    transport::{Transport, UdpTransport},
+};
 pub const GET_ITEM_V2: u8 = 0x02;
 pub const GET_INFO_V2: u8 = 0x03;
 
@@ -9,19 +12,19 @@ pub const GET_INFO_V2: u8 = 0x03;
 pub struct Toc;
 
 impl Toc {
-    pub fn get_info_v2(transport: &UdpTransport) -> Result<TocInfoV2, String> {
+    pub fn get_info_v2<T: Transport>(transport: &T) -> Result<TocInfoV2, String> {
         let packet = build_packet(
             &channels::Channel::Log(channels::LogChannel::Toc),
             &[GET_INFO_V2],
         );
 
-        transport.write_with_retries(&packet)?;
+        transport.send_with_retries(&packet)?;
         let res = transport.recv_with_retries()?;
 
         Ok(TocInfoV2::new(res[1..10].try_into().unwrap()))
     }
 
-    pub fn get_item_v2(transport: &UdpTransport, item_id: u16) -> Result<TocItemV2, String> {
+    pub fn get_item_v2<T: Transport>(transport: &T, item_id: u16) -> Result<TocItemV2, String> {
         let mut payload = Vec::with_capacity(3);
         payload.push(GET_ITEM_V2);
         payload.extend_from_slice(&item_id.to_le_bytes());
@@ -31,7 +34,7 @@ impl Toc {
             payload.as_slice(),
         );
 
-        transport.write_with_retries(&packet)?;
+        transport.send_with_retries(&packet)?;
         let res = transport.recv_with_retries()?;
 
         Ok(TocItemV2::new(&res[1..]))

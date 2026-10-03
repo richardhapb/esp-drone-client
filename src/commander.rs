@@ -1,6 +1,6 @@
 use crate::channels::{Channel, CommanderChannel};
 use crate::packet::build_packet;
-use crate::udp::UdpTransport;
+use crate::transport::{Transport, UdpTransport};
 const COMMAND_SIZE: usize = 14;
 
 #[derive(Debug, Default)]
@@ -36,6 +36,6 @@ impl Commander {
             &self.to_bytes(),
         );
 
-        transport.write_with_retries(&packet)
+        transport.send_with_retries(&packet)
     }
 }

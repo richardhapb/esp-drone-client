@@ -2,13 +2,13 @@ use crate::{
     commander::Commander,
     logging::Toc,
     packet::{Port, channels},
-    udp::UdpTransport,
+    transport::{Transport, UdpTransport},
 };
 
 mod commander;
 mod logging;
 mod packet;
-mod udp;
+mod transport;
 
 fn main() {
     let thrust = 10000;

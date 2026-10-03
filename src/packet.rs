@@ -183,8 +183,3 @@ pub fn build_packet(channel: &channels::Channel, data: &[u8]) -> Vec<u8> {
     let packet_info = Packet::new(info_crtp);
     packet_info.to_bytes()
 }
-
-pub fn null_packet() -> Vec<u8> {
-    let crtp = Crtp::new(&channels::Channel::Link(channels::LinkChannel::Source), &[]);
-    Packet::new(crtp).to_bytes()
-}
