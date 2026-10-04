@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::packet::channels;
-use crate::{packet::build_packet, transport::Transport};
+use crate::{link::Link, packet::build_packet};
 pub const GET_ITEM_V2: u8 = 0x02;
 pub const GET_INFO_V2: u8 = 0x03;
 
@@ -9,19 +9,19 @@ pub const GET_INFO_V2: u8 = 0x03;
 pub struct Toc;
 
 impl Toc {
-    pub fn get_info_v2<T: Transport>(transport: &T) -> Result<TocInfoV2, String> {
+    pub fn get_info_v2<L: Link>(link: &L) -> Result<TocInfoV2, String> {
         let packet = build_packet(
             &channels::Channel::Log(channels::LogChannel::Toc),
             &[GET_INFO_V2],
         );
 
-        transport.send_with_retries(&packet)?;
-        let res = transport.recv_with_retries()?;
+        link.send_with_retries(&packet)?;
+        let res = link.recv_with_retries()?;
 
         Ok(TocInfoV2::new(res[1..10].try_into().unwrap()))
     }
 
-    pub fn get_item_v2<T: Transport>(transport: &T, item_id: u16) -> Result<TocItemV2, String> {
+    pub fn get_item_v2<L: Link>(link: &L, item_id: u16) -> Result<TocItemV2, String> {
         let mut payload = Vec::with_capacity(3);
         payload.push(GET_ITEM_V2);
         payload.extend_from_slice(&item_id.to_le_bytes());
@@ -31,8 +31,8 @@ impl Toc {
             payload.as_slice(),
         );
 
-        transport.send_with_retries(&packet)?;
-        let res = transport.recv_with_retries()?;
+        link.send_with_retries(&packet)?;
+        let res = link.recv_with_retries()?;
 
         Ok(TocItemV2::new(&res[1..]))
     }
@@ -65,13 +65,13 @@ impl TocInfoV2 {
         self.data[8]
     }
 
-    pub fn get_item<T: Transport>(&self, transport: &T, name: &str) -> Option<TocItemV2> {
+    pub fn get_item<L: Link>(&self, link: &L, name: &str) -> Option<TocItemV2> {
         let parts = name.split_once(".").unwrap_or_default();
         let group = parts.0;
         let name = parts.1;
 
         for i in 0..self.count() {
-            let item = Toc::get_item_v2(transport, i).unwrap();
+            let item = Toc::get_item_v2(link, i).unwrap();
             if group == item.group() && name == item.name() {
                 return Some(item);
             }
@@ -165,11 +165,11 @@ mod tests {
     use std::cell::Cell;
 
     #[derive(Debug, Default)]
-    struct DumpTransport {
+    struct Dumplink {
         in_item: Cell<bool>,
     }
 
-    impl Transport for DumpTransport {
+    impl Link for Dumplink {
         fn recv(&self, buf: &mut [u8]) -> std::io::Result<usize> {
             let mut data = vec![0];
             if self.in_item.get() {
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn parse_get_item_some() {
-        let t = DumpTransport::default();
+        let t = Dumplink::default();
         let toc = Toc::get_info_v2(&t).unwrap();
 
         let item = toc.get_item(&t, "pm.vbat");
@@ -257,7 +257,7 @@ mod tests {
 
     #[test]
     fn parse_get_item_none() {
-        let t = DumpTransport::default();
+        let t = Dumplink::default();
         let toc = Toc::get_info_v2(&t).unwrap();
 
         let item = toc.get_item(&t, "nothing");

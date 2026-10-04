@@ -1,11 +1,11 @@
-use super::Transport;
+use super::Link;
 use std::{net::UdpSocket, time::Duration};
 
-pub struct UdpTransport {
+pub struct UdpLink {
     socket: UdpSocket,
 }
 
-impl UdpTransport {
+impl UdpLink {
     pub fn connect(address: &str) -> Result<Self, String> {
         let socket = UdpSocket::bind("0.0.0.0:3400").map_err(|e| format!("error binding: {e}"))?;
         socket
@@ -18,7 +18,7 @@ impl UdpTransport {
     }
 }
 
-impl Transport for UdpTransport {
+impl Link for UdpLink {
     fn recv(&self, buf: &mut [u8]) -> std::io::Result<usize> {
         self.socket.recv(buf)
     }

@@ -107,6 +107,7 @@ pub struct Crtp {
     payload: Vec<u8>,
 }
 
+#[allow(dead_code)]
 impl Crtp {
     pub fn new(channel: &channels::Channel, data: &[u8]) -> Self {
         Self {
@@ -116,12 +117,22 @@ impl Crtp {
         }
     }
 
-    pub fn from_raw(channel: u8, port: Port, data: &[u8]) -> Self {
-        Self {
-            channel,
-            port,
-            payload: data.to_vec(),
+    pub fn from_raw(data: &[u8]) -> Result<Crtp, String> {
+        if data.is_empty() {
+            return Err("no data received".into());
         }
+
+        let hdr = data[0];
+        let body = if data.len() > 2 { &data[1..] } else { &[] };
+
+        let port = Port::from(hdr >> 4);
+        let ch = hdr & 0b11;
+
+        Ok(Self {
+            channel: ch,
+            port,
+            payload: body.to_vec(),
+        })
     }
 
     pub fn header(&self) -> u8 {

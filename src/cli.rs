@@ -30,7 +30,7 @@ impl Command {
 }
 
 pub fn print_udp_usage() {
-    println!("UDP command: run the client over UDP transport");
+    println!("UDP command: run the client over UDP");
     println!();
     println!("-H, --host    Drone's host. e.g. 192.168.1.12");
     println!("-p, --port    Drone's port. e.g. 2390");
@@ -72,7 +72,7 @@ fn resolve_help() -> String {
     let mut help = String::new();
     help.push_str("esp-drone-client: Control ESP32 drone from cli\n");
     help.push('\n');
-    help.push_str("udp           Run the client over UDP transport\n");
+    help.push_str("udp           Run the client over UDP\n");
     help.push_str("-h, --help    This help\n");
     help
 }

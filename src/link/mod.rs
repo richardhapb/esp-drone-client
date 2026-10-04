@@ -1,16 +1,12 @@
-use crate::Port;
-use crate::packet::Crtp;
-
 pub mod udp;
 
 // Re-exports
-pub use udp::UdpTransport;
+pub use udp::UdpLink;
 
 const RETRIES: usize = 12;
 const BUF_SIZE: usize = 128;
 
-#[allow(dead_code)]
-pub trait Transport: Sized {
+pub trait Link: Sized {
     fn recv(&self, buf: &mut [u8]) -> std::io::Result<usize>;
     fn send(&self, buf: &[u8]) -> std::io::Result<usize>;
 
@@ -42,23 +38,6 @@ pub trait Transport: Sized {
         }
 
         Ok(())
-    }
-
-    fn recv_crtp(&self) -> Result<Crtp, String> {
-        let res = self.recv_with_retries()?;
-
-        if res.is_empty() {
-            return Err("no data received".into());
-        }
-
-        println!("received: {} -> {:?}", res.len(), res);
-        let hdr = res[0];
-        let body = &res[1..];
-
-        let port = Port::from(hdr >> 4);
-        let ch = hdr & 0b11;
-
-        Ok(Crtp::from_raw(ch, port, body))
     }
 }
 

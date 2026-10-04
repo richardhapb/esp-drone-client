@@ -1,6 +1,6 @@
 use crate::channels::{Channel, CommanderChannel};
+use crate::link::Link;
 use crate::packet::build_packet;
-use crate::transport::{Transport, UdpTransport};
 const COMMAND_SIZE: usize = 14;
 
 #[derive(Debug, Default)]
@@ -30,12 +30,12 @@ impl Commander {
         buf
     }
 
-    pub fn send(&self, transport: &UdpTransport) -> Result<(), String> {
+    pub fn send<L: Link>(&self, link: &L) -> Result<(), String> {
         let packet = build_packet(
             &Channel::Commander(CommanderChannel::Default),
             &self.to_bytes(),
         );
 
-        transport.send_with_retries(&packet)
+        link.send_with_retries(&packet)
     }
 }

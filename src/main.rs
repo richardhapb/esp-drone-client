@@ -1,22 +1,22 @@
 use crate::{
     cli::Command,
     commander::Commander,
+    link::UdpLink,
     logging::Toc,
     packet::{Port, channels},
-    transport::UdpTransport,
 };
 
 mod cli;
 mod commander;
+mod link;
 mod logging;
 mod packet;
-mod transport;
 
 fn main() -> Result<(), String> {
     let command = Command::from_args()?;
 
-    let transport = match command {
-        Command::Udp(address) => UdpTransport::connect(&address)?,
+    let link = match command {
+        Command::Udp(address) => UdpLink::connect(&address)?,
         Command::Help(help) => {
             println!("{}", help);
             std::process::exit(0);
@@ -25,11 +25,11 @@ fn main() -> Result<(), String> {
 
     let thrust = 10000;
 
-    let toc = Toc::get_info_v2(&transport)?;
+    let toc = Toc::get_info_v2(&link)?;
     println!("{}", toc);
     println!();
 
-    let bat = toc.get_item(&transport, "pm.vbat");
+    let bat = toc.get_item(&link, "pm.vbat");
     if let Some(bat) = bat {
         println!("{}", bat);
     }
@@ -37,7 +37,7 @@ fn main() -> Result<(), String> {
     println!("Ramping...");
     for _ in 1..30 {
         let cmd = Commander::new(0f32, 0f32, 0f32, thrust);
-        cmd.send(&transport)?;
+        cmd.send(&link)?;
         sleep(100);
     }
 
@@ -46,7 +46,7 @@ fn main() -> Result<(), String> {
     // Cool down
     println!("Cooling down...");
     for _ in 1..30 {
-        zero_cmd.send(&transport)?;
+        zero_cmd.send(&link)?;
         sleep(10);
     }
 
