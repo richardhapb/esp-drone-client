@@ -118,10 +118,13 @@ impl<'a, L: Link> Logging<'a, L> {
             return Err(format!("{what} failed, short response {:?}", res));
         }
 
-        if res[1] == payload[0] && res[2] == payload[1] && res[3] == 0 {
-            Ok(())
-        } else {
-            Err(format!("{what} failed, error: {}", Errno::from(res[3])))
+        if res[1] != payload[0] || res[2] != payload[1] {
+            return Err(format!("{what} failed, unexpected response {:?}", res));
+        }
+
+        match res[3] {
+            0 => Ok(()),
+            errno => Err(format!("{what} failed, error: {}", Errno::from(errno))),
         }
     }
 }
@@ -588,7 +591,8 @@ mod tests {
     #[test]
     fn block_command_rejects_mismatched_ack() {
         let link = Scripted::replying(&ack(CREATE_BLOCK_V2, 8, 0));
-        assert!(Logging::new(&link).create_block(7, &[]).is_err());
+        let err = Logging::new(&link).create_block(7, &[]).unwrap_err();
+        assert!(err.contains("unexpected response"), "{err}");
     }
 
     #[test]
