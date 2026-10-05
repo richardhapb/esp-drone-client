@@ -1,5 +1,6 @@
-use std::env::{Args, args};
+use std::env::args;
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Udp(String),
     Help(String),
@@ -7,7 +8,10 @@ pub enum Command {
 
 impl Command {
     pub fn from_args() -> Result<Command, String> {
-        let mut args = args();
+        Self::parse(args())
+    }
+
+    fn parse(mut args: impl Iterator<Item = String>) -> Result<Command, String> {
         // First argument has the process name
         args.next();
 
@@ -38,7 +42,7 @@ pub fn print_udp_usage() {
     println!();
 }
 
-fn resolve_udp_args(args: &mut Args) -> Result<String, String> {
+fn resolve_udp_args(args: &mut impl Iterator<Item = String>) -> Result<String, String> {
     let mut port = String::from("2390");
     let mut host = String::new();
 
@@ -75,4 +79,64 @@ fn resolve_help() -> String {
     help.push_str("udp           Run the client over UDP\n");
     help.push_str("-h, --help    This help\n");
     help
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn parse(args: &[&str]) -> Result<Command, String> {
+        Command::parse(args.iter().map(|a| a.to_string()))
+    }
+
+    #[test]
+    fn udp_with_default_port() {
+        assert_eq!(
+            parse(&["bin", "udp", "-H", "192.168.1.12"]),
+            Ok(Command::Udp("192.168.1.12:2390".into()))
+        );
+    }
+
+    #[test]
+    fn udp_with_custom_port_and_long_flags() {
+        assert_eq!(
+            parse(&["bin", "UDP", "--host", "10.0.0.1", "--port", "4000"]),
+            Ok(Command::Udp("10.0.0.1:4000".into()))
+        );
+    }
+
+    #[test]
+    fn udp_requires_host() {
+        assert_eq!(parse(&["bin", "udp"]), Err("host is required".into()));
+    }
+
+    #[test]
+    fn udp_flag_without_value() {
+        assert_eq!(parse(&["bin", "udp", "-H"]), Err("no host provided".into()));
+        assert_eq!(
+            parse(&["bin", "udp", "-H", "h", "-p"]),
+            Err("no port provided".into())
+        );
+    }
+
+    #[test]
+    fn udp_invalid_argument() {
+        assert_eq!(
+            parse(&["bin", "udp", "--nope"]),
+            Err("Invalid argument --nope".into())
+        );
+    }
+
+    #[test]
+    fn help_flags() {
+        for flag in ["--help", "-h"] {
+            assert!(matches!(parse(&["bin", flag]), Ok(Command::Help(_))));
+        }
+    }
+
+    #[test]
+    fn command_is_required() {
+        assert_eq!(parse(&["bin"]), Err("command is required".into()));
+        assert_eq!(parse(&["bin", "bogus"]), Err("command is required".into()));
+    }
 }

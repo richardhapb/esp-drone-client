@@ -487,4 +487,251 @@ mod tests {
         let item = toc.get_item(&log, "nothing");
         assert!(item.is_none());
     }
+
+    use std::cell::RefCell;
+    use std::time::Duration;
+
+    #[derive(Default)]
+    struct Scripted {
+        reply: RefCell<Vec<u8>>,
+        sent: RefCell<Vec<Vec<u8>>>,
+    }
+
+    impl Scripted {
+        fn replying(reply: &[u8]) -> Self {
+            Self {
+                reply: RefCell::new(reply.to_vec()),
+                ..Default::default()
+            }
+        }
+
+        fn last_sent(&self) -> Vec<u8> {
+            self.sent.borrow().last().cloned().unwrap()
+        }
+    }
+
+    impl Link for Scripted {
+        fn recv(&self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let r = self.reply.borrow();
+            buf[..r.len()].copy_from_slice(&r);
+            Ok(r.len())
+        }
+
+        fn send(&self, buf: &[u8]) -> std::io::Result<usize> {
+            self.sent.borrow_mut().push(buf.to_vec());
+            Ok(buf.len())
+        }
+    }
+
+    // control channel header 0x51, command, block id, errno
+    fn ack(cmd: u8, block: u8, errno: u8) -> [u8; 4] {
+        [0x51, cmd, block, errno]
+    }
+
+    fn item(kind: u8, id: u16) -> TocItemV2 {
+        let mut raw = vec![GET_ITEM_V2];
+        raw.extend_from_slice(&id.to_le_bytes());
+        raw.extend_from_slice(&[kind, b'g', 0, b'n', 0]);
+        TocItemV2::new(&raw)
+    }
+
+    #[test]
+    fn get_info_sends_toc_request() {
+        let link = Scripted::replying(&[&[0x50][..], &get_basic_toc_info()].concat());
+        Logging::new(&link).get_info_v2().unwrap();
+        assert_eq!(link.last_sent()[..2], [0x50, GET_INFO_V2]);
+    }
+
+    #[test]
+    fn get_item_sends_little_endian_id() {
+        let link = Scripted::replying(&[&[0x50][..], &get_pm_vbat()].concat());
+        let it = Logging::new(&link).get_item_v2(0x0102).unwrap();
+        assert_eq!(link.last_sent()[..4], [0x50, GET_ITEM_V2, 0x02, 0x01]);
+        assert_eq!(it.name(), "vbat");
+    }
+
+    #[test]
+    fn reset_ok() {
+        let link = Scripted::replying(&ack(RESET, 0, 0));
+        Logging::new(&link).reset().unwrap();
+        assert_eq!(link.last_sent()[..2], [0x51, RESET]);
+    }
+
+    #[test]
+    fn reset_error_and_short_response() {
+        let link = Scripted::replying(&ack(RESET, 0, 5));
+        assert!(Logging::new(&link).reset().is_err());
+
+        let link = Scripted::replying(&[0x51]);
+        assert!(Logging::new(&link).reset().is_err());
+    }
+
+    #[test]
+    fn create_block_encodes_variables() {
+        let link = Scripted::replying(&ack(CREATE_BLOCK_V2, 7, 0));
+        let a = item(7, 0x0A);
+        let b = item(2, 0x0102);
+        Logging::new(&link).create_block(7, &[&a, &b]).unwrap();
+        assert_eq!(
+            link.last_sent()[..9],
+            [0x51, CREATE_BLOCK_V2, 7, 7, 0x0A, 0, 2, 0x02, 0x01]
+        );
+    }
+
+    #[test]
+    fn create_block_reports_errno() {
+        let link = Scripted::replying(&ack(CREATE_BLOCK_V2, 7, 17));
+        let err = Logging::new(&link).create_block(7, &[]).unwrap_err();
+        assert!(err.contains("EEXIST"), "{err}");
+    }
+
+    #[test]
+    fn block_command_rejects_mismatched_ack() {
+        let link = Scripted::replying(&ack(CREATE_BLOCK_V2, 8, 0));
+        assert!(Logging::new(&link).create_block(7, &[]).is_err());
+    }
+
+    #[test]
+    fn block_command_rejects_short_response() {
+        let link = Scripted::replying(&[0x51, STOP_BLOCK]);
+        assert!(Logging::new(&link).stop_block(1).is_err());
+    }
+
+    #[test]
+    fn append_block_encodes_variables() {
+        let link = Scripted::replying(&ack(APPEND_BLOCK_V2, 3, 0));
+        let a = item(7, 0x0A);
+        Logging::new(&link).append_block(3, &[&a]).unwrap();
+        assert_eq!(
+            link.last_sent()[..6],
+            [0x51, APPEND_BLOCK_V2, 3, 7, 0x0A, 0]
+        );
+    }
+
+    #[test]
+    fn delete_and_stop_block() {
+        let link = Scripted::replying(&ack(DELETE_BLOCK, 4, 0));
+        Logging::new(&link).delete_block(4).unwrap();
+        assert_eq!(link.last_sent()[..3], [0x51, DELETE_BLOCK, 4]);
+
+        let link = Scripted::replying(&ack(STOP_BLOCK, 4, 0));
+        Logging::new(&link).stop_block(4).unwrap();
+        assert_eq!(link.last_sent()[..3], [0x51, STOP_BLOCK, 4]);
+    }
+
+    #[test]
+    fn start_block_encodes_period_in_millis() {
+        let link = Scripted::replying(&ack(START_BLOCK, 7, 0));
+        Logging::new(&link)
+            .start_block(7, Duration::from_millis(0x0164))
+            .unwrap();
+        assert_eq!(link.last_sent()[..5], [0x51, START_BLOCK, 7, 0x64, 0x01]);
+    }
+
+    #[test]
+    fn start_block_rejects_oversized_period() {
+        let link = Scripted::replying(&ack(START_BLOCK, 7, 0));
+        let err = Logging::new(&link)
+            .start_block(7, Duration::from_secs(120))
+            .unwrap_err();
+        assert!(err.contains("u16"));
+        assert!(link.sent.borrow().is_empty());
+    }
+
+    #[test]
+    fn toc_display_includes_fields() {
+        let toc = TocInfoV2::new(get_basic_toc_info()).to_string();
+        assert!(toc.contains("Count: 10"));
+        assert!(toc.contains("Max blocks: 5"));
+        let it = TocItemV2::new(&get_pm_vbat()).to_string();
+        assert!(it.contains("Group: pm"));
+        assert!(it.contains("Name: vbat"));
+    }
+
+    #[test]
+    fn log_type_sizes_and_unknown() {
+        assert_eq!(LogType::try_from(1).unwrap().size(), 1);
+        assert_eq!(LogType::try_from(5).unwrap().size(), 2);
+        assert_eq!(LogType::try_from(7).unwrap().size(), 4);
+        assert!(LogType::try_from(0).is_err());
+        assert!(LogType::try_from(8).is_err());
+    }
+
+    #[test]
+    fn log_data_from_raw() {
+        // data channel header, block 7, timestamp 0x030201, payload
+        let data = LogData::from_raw(&[0x52, 7, 1, 2, 3, 0xAA, 0xBB]).unwrap();
+        assert_eq!(data.block_id(), 7);
+        assert_eq!(data.timestamp(), 0x030201);
+        assert_eq!(data.data(), [0xAA, 0xBB]);
+    }
+
+    #[test]
+    fn log_data_without_values() {
+        let data = LogData::from_raw(&[0x52, 7, 1, 0, 0]).unwrap();
+        assert!(data.data().is_empty());
+    }
+
+    #[test]
+    fn log_data_rejects_other_packets() {
+        assert!(LogData::from_raw(&[]).is_err());
+        // control channel
+        assert!(LogData::from_raw(&[0x51, 7, 1, 2, 3]).is_err());
+        // commander port
+        assert!(LogData::from_raw(&[0x32, 7, 1, 2, 3]).is_err());
+        // too short for block id + timestamp
+        assert!(LogData::from_raw(&[0x52, 7, 1]).is_err());
+    }
+
+    #[test]
+    fn log_data_decodes_values() {
+        let vars = [item(1, 1), item(5, 2), item(7, 3), item(4, 4)];
+        let refs: Vec<_> = vars.iter().collect();
+        let mut raw = vec![0x52, 7, 0, 0, 0, 200];
+        raw.extend_from_slice(&(-2i16).to_le_bytes());
+        raw.extend_from_slice(&3.5f32.to_le_bytes());
+        raw.push(0xFF);
+
+        let values = LogData::from_raw(&raw).unwrap().values(&refs).unwrap();
+        assert_eq!(
+            values,
+            vec![
+                LogValue::U8(200),
+                LogValue::I16(-2),
+                LogValue::F32(3.5),
+                LogValue::I8(-1)
+            ]
+        );
+        assert_eq!(values[1].to_string(), "-2");
+    }
+
+    #[test]
+    fn log_data_decodes_wide_integers() {
+        let vars = [item(2, 1), item(3, 2), item(6, 3)];
+        let refs: Vec<_> = vars.iter().collect();
+        let mut raw = vec![0x52, 1, 0, 0, 0];
+        raw.extend_from_slice(&500u16.to_le_bytes());
+        raw.extend_from_slice(&70000u32.to_le_bytes());
+        raw.extend_from_slice(&(-70000i32).to_le_bytes());
+
+        let values = LogData::from_raw(&raw).unwrap().values(&refs).unwrap();
+        assert_eq!(
+            values,
+            vec![
+                LogValue::U16(500),
+                LogValue::U32(70000),
+                LogValue::I32(-70000)
+            ]
+        );
+    }
+
+    #[test]
+    fn log_data_values_errors() {
+        let short = LogData::from_raw(&[0x52, 1, 0, 0, 0, 1]).unwrap();
+        let v = item(3, 1);
+        assert!(short.values(&[&v]).is_err());
+
+        let bad = item(9, 1);
+        assert!(short.values(&[&bad]).is_err());
+    }
 }

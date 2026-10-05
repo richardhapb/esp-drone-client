@@ -206,3 +206,101 @@ pub fn build_packet(channel: &channels::Channel, data: &[u8]) -> Vec<u8> {
     let packet_info = Packet::new(info_crtp);
     packet_info.to_bytes()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::channels::*;
+    use super::*;
+
+    #[test]
+    fn channel_ports_and_numbers() {
+        let c = Channel::Log(LogChannel::Data);
+        assert_eq!(c.port(), Port::DataLogging);
+        assert_eq!(u8::from(&c), 2);
+        assert_eq!(Channel::Link(LinkChannel::Sink).port(), Port::LinkLayer);
+        assert_eq!(
+            Channel::Commander(CommanderChannel::Default).port(),
+            Port::Commander
+        );
+        assert_eq!(
+            u8::from(&Channel::Localization(LocalizationChannel::Generic)),
+            1
+        );
+    }
+
+    #[test]
+    fn port_round_trip() {
+        for n in [0u8, 2, 3, 4, 5, 6, 7, 13, 14, 15] {
+            assert_eq!(u8::from(&Port::from(n)), n);
+        }
+    }
+
+    #[test]
+    fn header_packs_port_and_channel() {
+        let crtp = Crtp::new(&Channel::Log(LogChannel::Control), &[]);
+        assert_eq!(crtp.header(), 0x51);
+        assert_eq!(crtp.len(), 1);
+    }
+
+    #[test]
+    fn to_bytes_is_header_then_payload() {
+        let crtp = Crtp::new(&Channel::Log(LogChannel::Toc), &[3, 4]);
+        assert_eq!(crtp.to_bytes(), vec![0x50, 3, 4]);
+        assert_eq!(crtp.len(), 3);
+    }
+
+    #[test]
+    fn from_raw_parses_header_and_payload() {
+        let crtp = Crtp::from_raw(&[0x52, 1, 2, 3]).unwrap();
+        assert_eq!(crtp.port(), Port::DataLogging);
+        assert_eq!(crtp.channel(), 2);
+        assert_eq!(crtp.payload(), [1, 2, 3]);
+    }
+
+    #[test]
+    fn from_raw_single_byte_payload() {
+        let crtp = Crtp::from_raw(&[0x50, 9]).unwrap();
+        assert_eq!(crtp.payload(), [9]);
+    }
+
+    #[test]
+    fn from_raw_header_only() {
+        let crtp = Crtp::from_raw(&[0x30]).unwrap();
+        assert_eq!(crtp.port(), Port::Commander);
+        assert!(crtp.payload().is_empty());
+    }
+
+    #[test]
+    fn from_raw_empty_is_error() {
+        assert!(Crtp::from_raw(&[]).is_err());
+    }
+
+    #[test]
+    fn from_raw_round_trips_to_bytes() {
+        let crtp = Crtp::new(&Channel::Log(LogChannel::Control), &[5, 6, 7]);
+        let back = Crtp::from_raw(&crtp.to_bytes()).unwrap();
+        assert_eq!(back.to_bytes(), crtp.to_bytes());
+    }
+
+    #[test]
+    fn display_shows_fields() {
+        let crtp = Crtp::new(&Channel::Log(LogChannel::Toc), b"hi");
+        assert_eq!(crtp.to_string(), "Channel: 0, Port: DataLogging, Data: hi");
+    }
+
+    #[test]
+    fn packet_appends_checksum() {
+        let bytes = build_packet(&Channel::Log(LogChannel::Toc), &[3]);
+        assert_eq!(bytes, vec![0x50, 3, 0x53]);
+    }
+
+    #[test]
+    fn checksum_wraps_modulo_256() {
+        let bytes = build_packet(
+            &Channel::Commander(CommanderChannel::Default),
+            &[0xFF, 0xFF],
+        );
+        // 0x30 + 0xFF + 0xFF = 0x22E
+        assert_eq!(*bytes.last().unwrap(), 0x2E);
+    }
+}
