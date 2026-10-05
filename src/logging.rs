@@ -5,8 +5,9 @@ use crate::packet::{Crtp, Port, channels};
 use crate::{link::Link, packet::build_packet};
 pub const GET_ITEM_V2: u8 = 0x02;
 pub const GET_INFO_V2: u8 = 0x03;
+const MAX_SKIPPED: usize = 32;
 pub const DELETE_BLOCK: u8 = 0x02;
-pub const START_BLOCK_V2: u8 = 0x08;
+pub const START_BLOCK: u8 = 0x03;
 pub const STOP_BLOCK: u8 = 0x04;
 pub const RESET: u8 = 0x05;
 pub const CREATE_BLOCK_V2: u8 = 0x06;
@@ -85,15 +86,13 @@ impl<'a, L: Link> Logging<'a, L> {
         self.block_command("delete block", &[DELETE_BLOCK, block_id])
     }
 
+    /// The device only accepts the period in 10 ms ticks, as a single byte.
     pub fn start_block(&self, block_id: u8, period: std::time::Duration) -> Result<(), String> {
-        let period: u16 = period
-            .as_millis()
+        let ticks: u8 = (period.as_millis() / 10)
             .try_into()
-            .map_err(|e| format!("error transforming period to u16: {e}"))?;
-        let mut payload = vec![START_BLOCK_V2, block_id];
-        payload.extend_from_slice(&period.to_le_bytes());
+            .map_err(|e| format!("error transforming period to u8 ticks: {e}"))?;
 
-        self.block_command("start block", &payload)
+        self.block_command("start block", &[START_BLOCK, block_id, ticks])
     }
 
     pub fn stop_block(&self, block_id: u8) -> Result<(), String> {
@@ -107,7 +106,16 @@ impl<'a, L: Link> Logging<'a, L> {
         );
 
         self.link.send_with_retries(&packet)?;
-        self.link.recv_with_retries()
+
+        // started blocks stream data packets that can arrive before the ack
+        for _ in 0..MAX_SKIPPED {
+            let res = self.link.recv_with_retries()?;
+            if res.first() == Some(&packet[0]) {
+                return Ok(res);
+            }
+        }
+
+        Err("no control response received".into())
     }
 
     fn block_command(&self, what: &str, payload: &[u8]) -> Result<(), String> {
@@ -497,6 +505,7 @@ mod tests {
     #[derive(Default)]
     struct Scripted {
         reply: RefCell<Vec<u8>>,
+        queued: RefCell<Vec<Vec<u8>>>,
         sent: RefCell<Vec<Vec<u8>>>,
     }
 
@@ -515,7 +524,12 @@ mod tests {
 
     impl Link for Scripted {
         fn recv(&self, buf: &mut [u8]) -> std::io::Result<usize> {
-            let r = self.reply.borrow();
+            let mut queued = self.queued.borrow_mut();
+            let r = if queued.is_empty() {
+                self.reply.borrow().clone()
+            } else {
+                queued.remove(0)
+            };
             buf[..r.len()].copy_from_slice(&r);
             Ok(r.len())
         }
@@ -596,6 +610,15 @@ mod tests {
     }
 
     #[test]
+    fn control_skips_streamed_data_before_ack() {
+        let link = Scripted::replying(&ack(STOP_BLOCK, 4, 0));
+        link.queued
+            .borrow_mut()
+            .push(vec![0x52, 4, 1, 0, 0, 9, 9, 9, 9]);
+        Logging::new(&link).stop_block(4).unwrap();
+    }
+
+    #[test]
     fn block_command_rejects_short_response() {
         let link = Scripted::replying(&[0x51, STOP_BLOCK]);
         assert!(Logging::new(&link).stop_block(1).is_err());
@@ -624,21 +647,21 @@ mod tests {
     }
 
     #[test]
-    fn start_block_encodes_period_in_millis() {
-        let link = Scripted::replying(&ack(START_BLOCK_V2, 7, 0));
+    fn start_block_encodes_period_in_10ms_ticks() {
+        let link = Scripted::replying(&ack(START_BLOCK, 7, 0));
         Logging::new(&link)
-            .start_block(7, Duration::from_millis(0x0164))
+            .start_block(7, Duration::from_millis(250))
             .unwrap();
-        assert_eq!(link.last_sent()[..5], [0x51, START_BLOCK_V2, 7, 0x64, 0x01]);
+        assert_eq!(link.last_sent()[..4], [0x51, START_BLOCK, 7, 25]);
     }
 
     #[test]
     fn start_block_rejects_oversized_period() {
-        let link = Scripted::replying(&ack(START_BLOCK_V2, 7, 0));
+        let link = Scripted::replying(&ack(START_BLOCK, 7, 0));
         let err = Logging::new(&link)
-            .start_block(7, Duration::from_secs(120))
+            .start_block(7, Duration::from_secs(3))
             .unwrap_err();
-        assert!(err.contains("u16"));
+        assert!(err.contains("u8"));
         assert!(link.sent.borrow().is_empty());
     }
 
