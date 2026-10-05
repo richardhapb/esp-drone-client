@@ -6,7 +6,7 @@ use crate::{link::Link, packet::build_packet};
 pub const GET_ITEM_V2: u8 = 0x02;
 pub const GET_INFO_V2: u8 = 0x03;
 pub const DELETE_BLOCK: u8 = 0x02;
-pub const START_BLOCK: u8 = 0x03;
+pub const START_BLOCK_V2: u8 = 0x08;
 pub const STOP_BLOCK: u8 = 0x04;
 pub const RESET: u8 = 0x05;
 pub const CREATE_BLOCK_V2: u8 = 0x06;
@@ -90,7 +90,7 @@ impl<'a, L: Link> Logging<'a, L> {
             .as_millis()
             .try_into()
             .map_err(|e| format!("error transforming period to u16: {e}"))?;
-        let mut payload = vec![START_BLOCK, block_id];
+        let mut payload = vec![START_BLOCK_V2, block_id];
         payload.extend_from_slice(&period.to_le_bytes());
 
         self.block_command("start block", &payload)
@@ -621,16 +621,16 @@ mod tests {
 
     #[test]
     fn start_block_encodes_period_in_millis() {
-        let link = Scripted::replying(&ack(START_BLOCK, 7, 0));
+        let link = Scripted::replying(&ack(START_BLOCK_V2, 7, 0));
         Logging::new(&link)
             .start_block(7, Duration::from_millis(0x0164))
             .unwrap();
-        assert_eq!(link.last_sent()[..5], [0x51, START_BLOCK, 7, 0x64, 0x01]);
+        assert_eq!(link.last_sent()[..5], [0x51, START_BLOCK_V2, 7, 0x64, 0x01]);
     }
 
     #[test]
     fn start_block_rejects_oversized_period() {
-        let link = Scripted::replying(&ack(START_BLOCK, 7, 0));
+        let link = Scripted::replying(&ack(START_BLOCK_V2, 7, 0));
         let err = Logging::new(&link)
             .start_block(7, Duration::from_secs(120))
             .unwrap_err();
