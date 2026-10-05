@@ -2,6 +2,7 @@ use std::fmt;
 
 macro_rules! errno {
     ($($name:ident = $num:literal, $desc:literal;)*) => {
+        #[allow(clippy::upper_case_acronyms)]
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
         pub enum Errno {
             $($name,)*
