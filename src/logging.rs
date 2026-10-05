@@ -298,7 +298,7 @@ impl TocInfoV2 {
         self.data[8]
     }
 
-    pub fn get_item<'a, L: Link>(&self, log: &'a Logging<L>, name: &str) -> Option<TocItemV2> {
+    pub fn get_item<L: Link>(&self, log: &Logging<L>, name: &str) -> Option<TocItemV2> {
         let parts = name.split_once(".").unwrap_or_default();
         let group = parts.0;
         let name = parts.1;
