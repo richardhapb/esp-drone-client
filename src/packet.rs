@@ -61,7 +61,7 @@ pub mod channels {
 }
 
 #[allow(unused)]
-#[derive(Debug, Clone, Default, Copy)]
+#[derive(Debug, Clone, Default, Copy, PartialEq, Eq)]
 pub enum Port {
     Console = 0,
     Parameters = 2,
@@ -123,7 +123,7 @@ impl Crtp {
         }
 
         let hdr = data[0];
-        let body = if data.len() > 2 { &data[1..] } else { &[] };
+        let body = if data.len() > 1 { &data[1..] } else { &[] };
 
         let port = Port::from(hdr >> 4);
         let ch = hdr & 0b11;
@@ -133,6 +133,18 @@ impl Crtp {
             port,
             payload: body.to_vec(),
         })
+    }
+
+    pub fn channel(&self) -> u8 {
+        self.channel
+    }
+
+    pub fn port(&self) -> Port {
+        self.port
+    }
+
+    pub fn payload(&self) -> &[u8] {
+        &self.payload
     }
 
     pub fn header(&self) -> u8 {

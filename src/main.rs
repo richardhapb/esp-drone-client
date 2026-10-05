@@ -1,13 +1,14 @@
 use crate::{
     cli::Command,
     commander::Commander,
-    link::UdpLink,
-    logging::Toc,
-    packet::{Port, channels},
+    link::{Link, UdpLink},
+    logging::{LogData, Logging},
+    packet::{Crtp, Port, channels},
 };
 
 mod cli;
 mod commander;
+mod errno;
 mod link;
 mod logging;
 mod packet;
@@ -15,30 +16,44 @@ mod packet;
 fn main() -> Result<(), String> {
     let command = Command::from_args()?;
 
-    let link = match command {
+    let l = match command {
         Command::Udp(address) => UdpLink::connect(&address)?,
         Command::Help(help) => {
             println!("{}", help);
             std::process::exit(0);
         }
     };
+    let log = Logging::new(&l);
 
     let thrust = 10000;
 
-    let toc = Toc::get_info_v2(&link)?;
+    let toc = log.get_info_v2()?;
     println!("{}", toc);
     println!();
 
-    let bat = toc.get_item(&link, "pm.vbat");
-    if let Some(bat) = bat {
+    log.reset()?;
+    let mut vars = Vec::new();
+    if let Some(bat) = toc.get_item(&log, "pm.vbat") {
         println!("{}", bat);
+        log.create_block(7, &[&bat])?;
+        log.start_block(7, std::time::Duration::from_millis(100))?;
+        vars.push(bat);
     }
 
     println!("Ramping...");
     for _ in 1..30 {
         let cmd = Commander::new(0f32, 0f32, 0f32, thrust);
-        cmd.send(&link)?;
+        cmd.send(&l)?;
+        let res = l.recv_with_retries()?;
+        match LogData::from_raw(&res) {
+            Ok(sample) => println!("{:?}", sample.values(&vars.iter().collect::<Vec<_>>())?),
+            Err(_) => println!("{}", Crtp::from_raw(&res)?),
+        }
         sleep(100);
+    }
+
+    if !vars.is_empty() {
+        log.stop_block(7)?;
     }
 
     let zero_cmd = Commander::default();
@@ -46,7 +61,7 @@ fn main() -> Result<(), String> {
     // Cool down
     println!("Cooling down...");
     for _ in 1..30 {
-        zero_cmd.send(&link)?;
+        zero_cmd.send(&l)?;
         sleep(10);
     }
 
